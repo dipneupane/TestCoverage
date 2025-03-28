@@ -1,36 +1,70 @@
-# This is a basic workflow to help you get started with Actions
+name: Test Coverage And Summary Report
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+    branches:
+      - main
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: tests/TestCoverage.Test
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Install Required Tools
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          dotnet new tool-manifest --force
+          dotnet tool install DotnetCtrfJsonReporter --local
+        shell: powershell
+
+      - name: Restore Dependencies and Build
+        run: |
+          dotnet restore
+          dotnet build --configuration Release
+
+      - name: Run Tests with Coverage
+        run: |
+          dotnet test --configuration Release --no-build --verbosity=minimal `
+          --logger "trx;logfilename=output.trx;verbosity=detailed"`
+          -p:CollectCoverage=true `
+          -p:CoverletOutputFormat="opencover" `
+          -p:CoverletOutput=TestResults/output.xml
+
+      - name: Converting Generated TRF To JSON Report For Presentation
+        if: success()
+        run: dotnet tool run DotnetCtrfJsonReporter -p "TestResults/output.trx" -f "output.json" -d "TestResults" -t "mstest"
+  
+      - name: Test Summary Results
+        uses: ctrf-io/github-test-reporter@v1
+        if: success()
+        with:
+          report-path: 'tests/TestCoverage.Test/TestResults/output.json'
+          summary-report: true
+          test-report: true
+          annotate: true
+          failed-report: true
+          skipped-report: true
+          upload-artifact: true
+
+      - name: Create Test Coverage Badge
+        uses: simon-k/dotnet-code-coverage-badge@v1.0.0
+        id: create_coverage_badge
+        with:
+          label: Unit Test Coverage
+          color: brightgreen
+          path: 'tests/TestCoverage.Test/TestResults/output.xml'
+          gist-filename: coverage-badge.txt
+          gist-id: f59d0140e2c811c0b651d6e02b84796e
+          gist-auth-token: ${{ secrets.GIST_AUTH_TOKEN }}  

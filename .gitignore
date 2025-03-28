@@ -1,0 +1,6 @@
+/src/obj
+/src/bin
+/.vs
+/tests/TestCoverage/.config
+/tests/TestCoverage/bin
+/tests/TestCoverage/obj
